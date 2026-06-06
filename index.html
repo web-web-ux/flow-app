@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow — Общение в потоке важного</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #eef1f6;
+    --surface: #ffffff;
+    --surface2: #f4f7fb;
+    --blue-light: #c8d8ec;
+    --blue-mid: #9db8d8;
+    --blue-accent: #7aa0c4;
+    --green-light: #c8e6d4;
+    --green-accent: #8fc4a8;
+    --text-primary: #2c3e50;
+    --text-secondary: #7a8fa6;
+    --text-muted: #aab8c8;
+    --red: #e07a7a;
+    --shadow-sm: 0 2px 12px rgba(100,130,160,0.10);
+    --shadow-md: 0 6px 28px rgba(100,130,160,0.15);
+    --shadow-lg: 0 16px 48px rgba(100,130,160,0.18);
+    --radius: 20px;
+    --radius-sm: 12px;
+    --radius-xs: 8px;
+    font-family: 'Nunito', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    margin: 0;
+    background-image: radial-gradient(ellipse at 20% 30%, #d6e8f7 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 70%, #d4eddf 0%, transparent 55%);
+  }
+
+  /* ---- PHONE SHELL ---- */
+  .phone {
+    width: 100%;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--surface);
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .status-bar { display: none; }
+  .status-icons { display: flex; gap: 5px; align-items: center; }
+  .status-icons svg { width: 14px; height: 14px; fill: var(--text-primary); }
+
+  /* ============ SCREEN SYSTEM ============ */
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; overflow: hidden; }
+  .screen.active { display: flex; animation: fadeIn 0.28s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:none; } }
+  @keyframes fadeInLeft { from { opacity:0; transform:translateX(-18px); } to { opacity:1; transform:none; } }
+  .screen.back { animation: fadeInLeft 0.28s ease; }
+
+  /* ============ SPLASH ============ */
+  #splash {
+    background: linear-gradient(160deg, #a8c8e8 0%, #b8d4e8 40%, #9ec4b0 100%);
+    align-items: center; justify-content: center; gap: 0;
+  }
+  .splash-blob {
+    width: 180px; height: 120px; position: relative; margin: 32px 0;
+  }
+  .blob {
+    position: absolute; border-radius: 50%; filter: blur(8px);
+    animation: float 4s ease-in-out infinite;
+  }
+  .blob1 { width:120px; height:80px; background:rgba(255,255,255,0.45); top:0; left:30px; }
+  .blob2 { width:100px; height:66px; background:rgba(140,200,160,0.55); top:28px; left:20px; animation-delay:-1.5s; }
+  .blob3 { width:90px; height:60px; background:rgba(255,255,255,0.3); top:50px; left:50px; animation-delay:-3s; }
+  @keyframes float {
+    0%,100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-10px) scale(1.04); }
+  }
+  .splash-title { font-family:'Playfair Display',serif; font-size:48px; color:#fff; font-weight:500; letter-spacing:-1px; }
+  .splash-sub { color:rgba(255,255,255,0.82); font-size:15px; font-weight:400; text-align:center; line-height:1.5; margin-top:8px; }
+  .splash-btn {
+    margin-top:56px; background:rgba(255,255,255,0.25); border:none; color:#fff;
+    padding:16px 56px; border-radius:50px; font-size:16px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:10px;
+    backdrop-filter:blur(8px); transition:all 0.2s; font-family:'Nunito',sans-serif;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+  }
+  .splash-btn:hover { background:rgba(255,255,255,0.38); transform:scale(1.03); }
+  .splash-login { margin-top:20px; color:rgba(255,255,255,0.72); font-size:14px; }
+  .splash-login span { color:#fff; font-weight:700; cursor:pointer; }
+  .splash-login span:hover { text-decoration:underline; }
+
+  /* ============ CHAT LIST ============ */
+  #chats { background: linear-gradient(160deg, #ddeaf7 0%, #e8f3ee 100%); }
+  .screen-header { padding: 18px 22px 10px; display:flex; align-items:center; justify-content:space-between; }
+  .screen-title { font-size:26px; font-weight:800; color:var(--text-primary); letter-spacing:-0.5px; }
+  .icon-btn {
+    width:38px; height:38px; border-radius:50%; background:var(--surface2);
+    border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background 0.18s, transform 0.18s; color:var(--text-secondary);
+  }
+  .icon-btn:hover { background:var(--blue-light); transform:scale(1.08); }
+  .icon-btn svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* chat list */
+  .chat-list { flex:1; overflow-y:auto; padding:0 14px 90px; scrollbar-width:none; }
+  .chat-list::-webkit-scrollbar { display:none; }
+
+  .chat-item {
+    display:flex; align-items:center; gap:13px; padding:13px 10px;
+    border-radius:var(--radius-sm); cursor:pointer; transition:background 0.16s;
+    border-bottom:1px solid var(--bg);
+  }
+  .chat-item:hover { background:var(--surface2); }
+  .chat-item:last-child { border-bottom:none; }
+
+  .avatar {
+    width:50px; height:50px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:17px; color:#fff;
+    background: var(--blue-mid);
+  }
+  .avatar.green { background: var(--green-accent); }
+  .avatar.teal  { background: #88b8c0; }
+  .avatar.grey  { background: #b0bec5; }
+  .avatar img   { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+  .avatar-group { background:var(--green-light); }
+  .avatar-group svg { width:24px; height:24px; fill:none; stroke:var(--green-accent); stroke-width:1.8; }
+
+  .chat-info { flex:1; min-width:0; }
+  .chat-name { font-weight:700; font-size:15px; color:var(--text-primary); }
+  .chat-preview { font-size:13px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+
+  .chat-meta { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .chat-time { font-size:12px; color:var(--text-muted); }
+  .badge {
+    background:var(--blue-accent); color:#fff; border-radius:50px;
+    min-width:20px; height:20px; padding:0 6px; font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  .bottom-nav {
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 0 24px;
+    position: absolute; bottom: 0; left: 0; right: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .bottom-nav-island {
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(28px) saturate(2) brightness(1.12);
+    -webkit-backdrop-filter: blur(28px) saturate(2) brightness(1.12);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 50px;
+    padding: 8px 12px;
+    pointer-events: all;
+    box-shadow:
+      0 8px 32px rgba(100, 140, 200, 0.22),
+      0 1px 0 rgba(255,255,255,0.95) inset,
+      0 -1px 0 rgba(150,180,220,0.12) inset;
+    position: relative;
+    overflow: hidden;
+  }
+  /* glare streak across the pill */
+  .bottom-nav-island::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 10%; right: 10%; height: 42%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%);
+    border-radius: 0 0 50% 50%;
+    pointer-events: none;
+  }
+  .nav-btn {
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: none; cursor: pointer;
+    color: rgba(100, 130, 160, 0.7);
+    transition: color 0.2s, transform 0.18s, background 0.2s;
+    padding: 10px 22px;
+    border-radius: 50px;
+    position: relative; z-index: 1;
+  }
+  .nav-btn svg {
+    width: 22px; height: 22px;
+    stroke: currentColor; fill: none;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    transition: stroke 0.2s;
+  }
+  .nav-btn:hover { color: var(--blue-accent); transform: scale(1.1); }
+  .nav-btn.active {
+    color: var(--blue-accent);
+    background: rgba(122, 160, 196, 0.18);
+  }
+  .nav-btn.active svg { stroke: var(--blue-accent); stroke-width: 2.2; }
+  .nav-btn svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .nav-btn.active { color:var(--blue-accent); }
+  .nav-btn.active svg { stroke:var(--blue-accent); }
+  .nav-btn:hover { color:var(--blue-accent); }
+  .nav-active-dot {
+    width:36px; height:36px; border-radius:50%; background:var(--blue-light);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .nav-active-dot svg { stroke:var(--blue-accent); }
+
+  /* ============ CONTACT PROFILE ============ */
+  #profile { background:var(--surface); }
+  .back-btn {
+    background:none; border:none; cursor:pointer; color:var(--blue-accent);
+    display:flex; align-items:center; gap:4px; font-size:15px; font-weight:600;
+    font-family:'Nunito',sans-serif; padding:2px 4px; border-radius:8px;
+    transition:opacity 0.18s;
+  }
+  .back-btn:hover { opacity:0.7; }
+  .back-btn svg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+  .more-btn { background:none; border:none; cursor:pointer; color:var(--text-secondary); display:flex; }
+  .more-btn svg { width:20px; height:20px; fill:var(--text-secondary); }
+
+  .profile-hero { display:flex; flex-direction:column; align-items:center; padding:24px 22px 20px; }
+  .profile-avatar {
+    width:90px; height:90px; border-radius:50%; background:var(--blue-mid);
+    display:flex; align-items:center; justify-content:center;
+    font-size:36px; font-weight:700; color:#fff; margin-bottom:14px;
+    box-shadow: 0 4px 18px rgba(100,150,200,0.22);
+  }
+  .profile-avatar.green { background: var(--green-accent); }
+  .profile-name { font-size:22px; font-weight:800; color:var(--text-primary); }
+  .profile-status { font-size:13px; color:var(--text-muted); margin-top:4px; }
+
+  .action-row {
+    display:flex; justify-content:center; gap:14px; padding:8px 22px 16px;
+  }
+  .action-btn {
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    background:var(--surface2); border:none; border-radius:var(--radius-sm);
+    padding:14px 18px; cursor:pointer; min-width:68px;
+    transition:background 0.18s, transform 0.18s;
+    font-family:'Nunito',sans-serif; color:var(--blue-accent);
+  }
+  .action-btn:hover { background:var(--blue-light); transform:scale(1.04); }
+  .action-btn svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .action-btn span { font-size:12px; font-weight:600; color:var(--text-secondary); }
+
+  .info-section { padding:0 16px 16px; flex:1; overflow-y:auto; scrollbar-width:none; }
+  .info-section::-webkit-scrollbar { display:none; }
+
+  .info-card {
+    background:var(--surface2); border-radius:var(--radius); padding:4px 0; margin-bottom:12px;
+  }
+  .info-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px; cursor:pointer; transition:background 0.16s; border-radius:var(--radius);
+  }
+  .info-row:hover { background:rgba(0,0,0,0.03); }
+  .info-left { display:flex; align-items:center; gap:13px; }
+  .info-icon {
+    width:36px; height:36px; border-radius:10px; background:var(--blue-light);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .info-icon svg { width:18px; height:18px; stroke:var(--blue-accent); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .info-label { font-size:15px; font-weight:600; color:var(--text-primary); }
+  .info-right { display:flex; align-items:center; gap:8px; color:var(--text-muted); font-size:14px; font-weight:500; }
+  .info-right svg { width:16px; height:16px; stroke:var(--text-muted); fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* toggle */
+  .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; }
+  .toggle-left { display:flex; align-items:center; gap:13px; }
+  .toggle-info .toggle-title { font-size:15px; font-weight:600; color:var(--text-primary); }
+  .toggle-info .toggle-sub { font-size:12px; color:var(--text-muted); margin-top:1px; }
+  .toggle {
+    width:48px; height:28px; border-radius:50px; background:var(--green-accent);
+    position:relative; cursor:pointer; transition:background 0.25s; border:none;
+    flex-shrink:0;
+  }
+  .toggle::after {
+    content:''; position:absolute; top:3px; right:4px; width:22px; height:22px;
+    border-radius:50%; background:#fff; transition:transform 0.25s;
+    box-shadow:0 2px 6px rgba(0,0,0,0.15);
+  }
+  .toggle.off { background:var(--text-muted); }
+  .toggle.off::after { transform:translateX(-20px); }
+
+  .danger-row { padding:14px 18px; cursor:pointer; transition:background 0.16s; border-radius:var(--radius); }
+  .danger-row:hover { background:rgba(224,122,122,0.07); }
+  .danger-text { color:var(--red); font-size:15px; font-weight:600; display:flex; align-items:center; gap:10px; }
+  .danger-text svg { width:18px; height:18px; stroke:var(--red); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* ============ GROUP PROFILE ============ */
+  #group { background:var(--surface); }
+  .group-avatar {
+    width:90px; height:90px; border-radius:50%; background:var(--green-light);
+    display:flex; align-items:center; justify-content:center; margin-bottom:14px;
+    box-shadow:0 4px 18px rgba(100,180,130,0.22);
+  }
+  .group-avatar svg { width:42px; height:42px; stroke:var(--green-accent); fill:none; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+  .group-count { font-size:13px; color:var(--text-muted); margin-top:4px; }
+
+  .action-btn.green-action { color:var(--green-accent); }
+  .action-btn.green-action:hover { background:var(--green-light); }
+
+  .group-desc-card { background:var(--surface2); border-radius:var(--radius); padding:14px 18px; margin-bottom:12px; }
+  .group-desc-label { font-size:12px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; margin-bottom:6px; }
+  .group-desc-text { font-size:14px; color:var(--text-secondary); line-height:1.5; }
+
+  .info-icon.green-icon { background:var(--green-light); }
+  .info-icon.green-icon svg { stroke:var(--green-accent); }
+
+  /* ============ CHAT SCREEN ============ */
+  #chat { background:var(--surface); }
+  .chat-header {
+    display:flex; align-items:center; gap:12px; padding:14px 18px 12px;
+    border-bottom:1px solid var(--bg);
+  }
+  .chat-header-info { flex:1; }
+  .chat-header-name { font-size:16px; font-weight:700; color:var(--text-primary); }
+  .chat-header-status { font-size:12px; color:var(--text-muted); }
+
+  .messages { flex:1; overflow-y:auto; padding:16px 16px 12px; display:flex; flex-direction:column; gap:10px; scrollbar-width:none; }
+  .messages::-webkit-scrollbar { display:none; }
+
+  .msg { max-width:75%; display:flex; flex-direction:column; gap:2px; }
+  .msg.out { align-self:flex-end; align-items:flex-end; }
+  .msg.in { align-self:flex-start; }
+  .msg-bubble {
+    padding:10px 14px; border-radius:18px; font-size:14px; line-height:1.5; font-weight:500;
+  }
+  .msg.out .msg-bubble { background:var(--blue-accent); color:#fff; border-bottom-right-radius:5px; }
+  .msg.in .msg-bubble { background:var(--surface2); color:var(--text-primary); border-bottom-left-radius:5px; }
+  .msg-time { font-size:11px; color:var(--text-muted); padding:0 4px; }
+
+  .input-bar {
+    display:flex; align-items:center; gap:10px; padding:12px 16px 22px;
+    border-top:1px solid var(--bg);
+  }
+  .msg-input {
+    flex:1; background:var(--surface2); border:none; border-radius:50px;
+    padding:11px 18px; font-size:14px; font-family:'Nunito',sans-serif;
+    color:var(--text-primary); outline:none; resize:none;
+  }
+  .msg-input::placeholder { color:var(--text-muted); }
+  .send-btn {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--blue-accent);
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; position: relative; overflow: hidden;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 2px 12px rgba(122,160,196,0.35);
+  }
+  .send-btn:hover {
+    background: var(--blue-mid);
+    transform: scale(1.08);
+    box-shadow: 0 4px 18px rgba(122,160,196,0.5);
+  }
+  .send-btn:active { transform: scale(0.93); }
+  .send-btn svg {
+    width: 18px; height: 18px; stroke: #fff; fill: none;
+    stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .send-btn.sending svg { transform: translateY(-28px); }
+  .send-btn::after {
+    content: '';
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    transform: scale(0); opacity: 0;
+    transition: transform 0.35s ease, opacity 0.35s ease;
+  }
+  .send-btn.sending::after { transform: scale(2.2); opacity: 0; }
+
+  @keyframes msgPop {
+    0%   { opacity: 0; transform: translateY(12px) scale(0.88); }
+    60%  { transform: translateY(-3px) scale(1.03); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes replyPop {
+    0%   { opacity: 0; transform: translateY(10px) scale(0.9); }
+    60%  { transform: translateY(-2px) scale(1.02); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .msg-animate { animation: msgPop 0.32s cubic-bezier(.4,0,.2,1) forwards; }
+  .reply-animate { animation: replyPop 0.32s cubic-bezier(.4,0,.2,1) forwards; }
+  /* LAYOUT: two phones side by side on wide */
+  .app-wrapper { display:block; width:100%; height:100vh; height:100dvh; }
+
+  @media(max-width:600px) { body { padding:0; } }
+</style>
+</head>
+<body>
+<div class="app-wrapper">
+
+  <!-- ======= PHONE 1: Splash + Chats + Chat ======= -->
+  <div class="phone" id="phone1">
+
+    <!-- STATUS BAR -->
+    <div class="status-bar" style="position:absolute;top:0;left:0;right:0;z-index:20">
+      <span>9:41</span>
+      <div class="status-icons">
+        <!-- signal -->
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="1" y="14" width="3" height="6" rx="1"/><rect x="6" y="10" width="3" height="10" rx="1"/><rect x="11" y="6" width="3" height="14" rx="1"/><rect x="16" y="2" width="3" height="18" rx="1" opacity=".3"/></svg>
+        <!-- wifi -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+        <!-- battery -->
+        <svg viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="0" width="21" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="21.5" y="3.5" width="2" height="5" rx="1"/><rect x="2" y="2" width="16" height="8" rx="1.5"/></svg>
+      </div>
+    </div>
+
+    <!-- SPLASH SCREEN -->
+    <div class="screen active" id="splash" style="padding-top: env(safe-area-inset-top, 12px)">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px">
+        <div class="splash-title">Flow</div>
+        <div class="splash-sub">Общение в потоке<br>важного</div>
+        <div class="splash-blob">
+          <div class="blob blob1"></div>
+          <div class="blob blob2"></div>
+          <div class="blob blob3"></div>
+        </div>
+        <button class="splash-btn" onclick="goTo('chats')">
+          Начать
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin:round" width="18" height="18"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <div class="splash-login" style="margin-top:16px">Уже есть аккаунт? <span onclick="goTo('chats')">Войти</span></div>
+      </div>
+    </div>
+
+    <!-- CHATS SCREEN -->
+    <div class="screen" id="chats" style="padding-top: env(safe-area-inset-top, 12px)">
+      <div class="screen-header">
+        <div class="screen-title">Чаты</div>
+        <div style="display:flex;gap:8px">
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="chat-list">
+
+        <div class="chat-item">
+          <div class="avatar" onclick="goToChat('Алексей','был(а) недавно','А','blue','profile')">А</div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Алексей','был(а) недавно','А','blue','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Алексей</div>
+              <div class="chat-preview">Привет! Как дела?</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">9:41</span>
+              <span class="badge">2</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-item">
+          <div class="avatar avatar-group" onclick="goToChat('Команда Flow','12 участников','G','green-icon','group')">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Команда Flow','12 участников','G','green-icon','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Команда Flow</div>
+              <div class="chat-preview">Мария: Давайте созвонимся...</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">9:30</span>
+              <span class="badge">5</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-item">
+          <div class="avatar teal" onclick="goToChat('Дизайн-чат','','Д','teal','group')">Д</div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Дизайн-чат','активен','Д','teal','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Дизайн-чат</div>
+              <div class="chat-preview">Иван: Прикрепил файл</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">Вчера</span>
+              <span class="badge">3</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-item">
+          <div class="avatar grey" onclick="goToChat('Мария','в сети','М','grey','profile')">М</div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Мария','в сети','М','grey','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Мария</div>
+              <div class="chat-preview">Спасибо! 🌿</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">Вчера</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-item">
+          <div class="avatar" style="background:#a8c0d0" onclick="goToChat('Игорь','был недавно','И','blue','profile')">И</div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Игорь','был недавно','И','blue','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Игорь</div>
+              <div class="chat-preview">🎨 Стикер</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">Пн</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-item">
+          <div class="avatar avatar-group" onclick="goToChat('Семья','','С','green','group')">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div style="flex:1;min-width:0;display:contents" onclick="goToChat('Семья','','С','green','chat')">
+            <div class="chat-info">
+              <div class="chat-name">Семья</div>
+              <div class="chat-preview">Мама: Фото</div>
+            </div>
+            <div class="chat-meta">
+              <span class="chat-time">Вс</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /screen #chats -->
+    <!-- CONTACT PROFILE SCREEN -->
+    <div class="screen" id="profile" style="padding-top: env(safe-area-inset-top, 12px)">
+      <div class="screen-header" style="padding-bottom:8px">
+        <button class="back-btn" onclick="goBack('chats')">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          Назад
+        </button>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
+      </div>
+
+      <div class="profile-hero">
+        <div class="profile-avatar" id="profileAvatar">А</div>
+        <div class="profile-name" id="profileName">Алексей</div>
+        <div class="profile-status" id="profileStatus">был(а) недавно</div>
+      </div>
+
+      <div class="action-row">
+        <button class="action-btn" onclick="goToChat('Алексей','был(а) недавно','А','blue','chat')">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Сообщение</span>
+        </button>
+        <button class="action-btn">
+          <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.35 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 5.45 5.45l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>Звонок</span>
+        </button>
+        <button class="action-btn">
+          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span>Видео</span>
+        </button>
+        <button class="action-btn">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          <span>Ещё</span>
+        </button>
+      </div>
+
+      <div class="info-section">
+        <div class="info-card">
+          <div class="toggle-row">
+            <div class="toggle-left">
+              <div class="info-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+              <div class="toggle-info">
+                <div class="toggle-title">Уведомления</div>
+                <div class="toggle-sub">Включены</div>
+              </div>
+            </div>
+            <button class="toggle" onclick="this.classList.toggle('off')"></button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-row">
+            <div class="info-left">
+              <div class="info-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+              <span class="info-label">Файлы и медиа</span>
+            </div>
+            <div class="info-right">
+              24
+              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-left">
+              <div class="info-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+              <span class="info-label">Ссылки</span>
+            </div>
+            <div class="info-right">
+              7
+              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+          <div class="info-row" style="border:none">
+            <div class="info-left">
+              <div class="info-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <span class="info-label">Общие группы</span>
+            </div>
+            <div class="info-right">
+              3
+              <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="danger-row">
+            <div class="danger-text">
+              <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              Очистить историю
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP PROFILE SCREEN -->
+    <div class="screen" id="group" style="padding-top: env(safe-area-inset-top, 12px)">
+      <div class="screen-header" style="padding-bottom:8px">
+        <button class="back-btn" onclick="goBack('chats')">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          Назад
+        </button>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
+      </div>
+
+      <div class="profile-hero">
+        <div class="group-avatar" id="groupAvatar">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="profile-name" id="groupName">Команда Flow</div>
+        <div class="group-count" id="groupCount">12 участников</div>
+      </div>
+
+      <div class="action-row">
+        <button class="action-btn green-action">
+          <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.35 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 5.45 5.45l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>Звонок</span>
+        </button>
+        <button class="action-btn green-action">
+          <svg viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span>Видео</span>
+        </button>
+        <button class="action-btn green-action">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          <span>Добавить</span>
+        </button>
+        <button class="action-btn green-action">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          <span>Ещё</span>
+        </button>
+      </div>
+
+      <div class="info-section">
+        <div class="group-desc-card">
+          <div class="group-desc-label">ОПИСАНИЕ</div>
+          <div class="group-desc-text" id="groupDesc">Рабочее пространство для важных обсуждений и идей.</div>
+        </div>
+
+        <div class="info-card">
+          <div class="toggle-row">
+            <div class="toggle-left">
+              <div class="info-icon green-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+              <div class="toggle-info">
+                <div class="toggle-title">Уведомления</div>
+                <div class="toggle-sub">Включены</div>
+              </div>
+            </div>
+            <button class="toggle" onclick="this.classList.toggle('off')"></button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-row">
+            <div class="info-left">
+              <div class="info-icon green-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+              <span class="info-label">Медиа, файлы и ссылки</span>
+            </div>
+            <div class="info-right">128 <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="info-row">
+            <div class="info-left">
+              <div class="info-icon green-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+              <span class="info-label">Закреплённые сообщения</span>
+            </div>
+            <div class="info-right">8 <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+          <div class="info-row" style="border:none">
+            <div class="info-left">
+              <div class="info-icon green-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <span class="info-label">Участники</span>
+            </div>
+            <div class="info-right">12 <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="danger-row">
+            <div class="danger-text">
+              <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Покинуть группу
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT / CONVERSATION SCREEN -->
+    <div class="screen" id="chat" style="padding-top: env(safe-area-inset-top, 12px)">
+      <div class="chat-header">
+        <button class="back-btn" onclick="goBack('chats')" style="margin-right:4px">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="avatar" id="chatAvatar" style="width:38px;height:38px;font-size:14px">А</div>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="chatName">Алексей</div>
+          <div class="chat-header-status" id="chatStatus">был(а) недавно</div>
+        </div>
+        <button class="more-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
+      </div>
+
+      <div class="messages" id="messagesList">
+        <div class="msg in"><div class="msg-bubble">Привет! Как дела? 😊</div><div class="msg-time">9:40</div></div>
+        <div class="msg out"><div class="msg-bubble">Привет! Всё отлично, спасибо!</div><div class="msg-time">9:41</div></div>
+        <div class="msg in"><div class="msg-bubble">Отлично слышать! Над чем сейчас работаешь?</div><div class="msg-time">9:41</div></div>
+        <div class="msg out"><div class="msg-bubble">Делаю новый дизайн для Flow 🎨</div><div class="msg-time">9:42</div></div>
+      </div>
+
+      <div class="input-bar">
+        <input class="msg-input" id="msgInput" type="text" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMsg()">
+        <button class="send-btn" onclick="sendMsg()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /wrapper -->
+
+<script>
+  let currentScreen = 'splash';
+  let previousScreen = 'splash';
+
+  function goTo(screenId, back=false) {
+    const cur = document.getElementById(currentScreen);
+    const nxt = document.getElementById(screenId);
+    if (!nxt || screenId === currentScreen) return;
+    cur.classList.remove('active','back');
+    cur.style.display = 'none';
+    nxt.style.display = 'flex';
+    nxt.classList.remove('back');
+    if (back) nxt.classList.add('back');
+    nxt.classList.add('active');
+    previousScreen = currentScreen;
+    currentScreen = screenId;
+  }
+
+  function goBack(screenId) { goTo(screenId, true); }
+
+  function goToChat(name, status, initial, colorClass, screen) {
+    // Update profile/chat avatars & names
+    if (screen === 'profile') {
+      document.getElementById('profileName').textContent = name;
+      document.getElementById('profileStatus').textContent = status || 'в сети';
+      const av = document.getElementById('profileAvatar');
+      av.textContent = initial;
+      av.className = 'profile-avatar ' + (colorClass === 'green-icon' ? 'green' : '');
+    } else if (screen === 'group') {
+      document.getElementById('groupName').textContent = name;
+    } else if (screen === 'chat') {
+      document.getElementById('chatName').textContent = name;
+      document.getElementById('chatStatus').textContent = status || 'в сети';
+      const cav = document.getElementById('chatAvatar');
+      cav.textContent = initial;
+    }
+    goTo(screen);
+  }
+
+  function sendMsg() {
+    const input = document.getElementById('msgInput');
+    const btn = document.querySelector('.send-btn');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const list = document.getElementById('messagesList');
+    const now = new Date();
+    const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2,'0');
+
+    // кнопка: анимация отправки
+    btn.classList.add('sending');
+    setTimeout(() => btn.classList.remove('sending'), 400);
+
+    // пузырь сообщения
+    const div = document.createElement('div');
+    div.className = 'msg out msg-animate';
+    div.innerHTML = `<div class="msg-bubble">${text}</div><div class="msg-time">${time}</div>`;
+    list.appendChild(div);
+    input.value = '';
+    list.scrollTop = list.scrollHeight;
+
+    // индикатор печатания
+    const typing = document.createElement('div');
+    typing.className = 'msg in';
+    typing.innerHTML = `<div class="msg-bubble" style="letter-spacing:3px;color:var(--text-muted)">•••</div>`;
+    setTimeout(() => {
+      list.appendChild(typing);
+      list.scrollTop = list.scrollHeight;
+    }, 400);
+
+    // ответ
+    setTimeout(() => {
+      typing.remove();
+      const replies = ['Понял, спасибо!','Отлично! 👍','Хорошо, разберёмся.','Ок, скоро отвечу.','Звучит здорово! 🎉'];
+      const r = document.createElement('div');
+      r.className = 'msg in reply-animate';
+      r.innerHTML = `<div class="msg-bubble">${replies[Math.floor(Math.random()*replies.length)]}</div><div class="msg-time">${time}</div>`;
+      list.appendChild(r);
+      list.scrollTop = list.scrollHeight;
+    }, 1200 + Math.random() * 600);
+  }
+</script>
+</body>
+</html>
